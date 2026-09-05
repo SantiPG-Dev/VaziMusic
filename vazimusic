@@ -1,0 +1,4 @@
+#!/bin/sh
+# VaziMusic — java lanza el .java directo (lo compila en memoria si cambió)
+DIR=$(cd "$(dirname "$(readlink -f "$0")")" && pwd)
+exec java "$DIR/VaziMusic.java" "$@"
