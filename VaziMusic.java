@@ -10,6 +10,7 @@ import javax.sound.sampled.AudioSystem;
 import javax.sound.sampled.FloatControl;
 import javax.sound.sampled.LineUnavailableException;
 import javax.sound.sampled.SourceDataLine;
+import javax.imageio.ImageIO;
 import javax.swing.*;
 import javax.swing.border.Border;
 import java.awt.*;
@@ -18,6 +19,7 @@ import java.awt.dnd.DnDConstants;
 import java.awt.event.*;
 import java.io.*;
 import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.util.*;
 import java.util.List;
 import java.util.regex.Pattern;
@@ -25,13 +27,70 @@ import java.util.regex.Pattern;
 class VaziMusic {
 
     // paleta (los mismos valores que la versión web)
-    static final Color CHROME = new Color(0x2B2C26), PANEL = new Color(0x3B3D35);
-    static final Color LIGHT  = new Color(0x5C5E52), DARK   = new Color(0x131310);
-    static final Color GREEN  = new Color(0x00E43C), GREEND = new Color(0x0A8C30);
-    static final Color AMBER  = new Color(0xE8D878), SEL    = new Color(0x3A5D8F);
-    static final Color GLYPH  = new Color(0xD3D6C4), GREY   = new Color(0x6E7162);
-    static final Color TOGGON = new Color(0x4A5A44), TOGGTX = new Color(0xC9F5CF);
-    static final Color BLACK  = new Color(0x000000), ZEBRA  = new Color(0x0B0F0B);
+    // paleta viva: los componentes la leen al pintar, así que cambiar tema = trocar y repintar
+    // por defecto arranca con la identidad del logo (VM neón sobre negro azulado)
+    static Color CHROME = new Color(0x0A0C12), PANEL = new Color(0x161A24);
+    static Color LIGHT  = new Color(0x343B4C), DARK   = new Color(0x04050A);
+    static Color GREEN  = new Color(0xFF00CC), GREEND = new Color(0x7A1466);
+    static Color AMBER  = new Color(0x00C8FF), SEL    = new Color(0x3A2B8F);
+    static Color GLYPH  = new Color(0xE4E8F2), GREY   = new Color(0x5A6272);
+    static Color TOGGON = new Color(0x3A2050), TOGGTX = new Color(0xE0B8FF);
+    static Color BLACK  = new Color(0x000000), ZEBRA  = new Color(0x0A0810);
+    static Color LOGOV1 = new Color(0xFFD700), LOGOV2 = new Color(0xFF00FF);
+    static Color LOGOM1 = new Color(0x00C8FF), LOGOM2 = new Color(0x8A2BE2);
+    static String temaActual = "Vazi";
+
+    static class Theme {
+        final String nombre;
+        final int lcd, lcdDim, marquee, sel, zebra, toggOn, toggTx;
+        int chrome = 0x2B2C26, panel = 0x3B3D35, light = 0x5C5E52, dark = 0x131310;
+        int glyph = 0xD3D6C4, grey = 0x6E7162;
+        int logoV1 = 0xF2F2E9, logoV2 = 0xF2F2E9, logoM1 = 0x00E43C, logoM2 = 0x00E43C;
+        Theme(String nombre, int lcd, int lcdDim, int marquee, int sel, int zebra, int toggOn, int toggTx) {
+            this.nombre = nombre; this.lcd = lcd; this.lcdDim = lcdDim; this.marquee = marquee;
+            this.sel = sel; this.zebra = zebra; this.toggOn = toggOn; this.toggTx = toggTx;
+        }
+        Theme conChapa(int chrome, int panel, int light, int dark, int glyph, int grey) {
+            this.chrome = chrome; this.panel = panel; this.light = light; this.dark = dark;
+            this.glyph = glyph; this.grey = grey; return this;
+        }
+        Theme conLogo(int v1, int v2, int m1, int m2) {
+            this.logoV1 = v1; this.logoV2 = v2; this.logoM1 = m1; this.logoM2 = m2; return this;
+        }
+    }
+    static final List<Theme> TEMAS = List.of(
+        // el del logo: VM neón sobre negro azulado (colores tomados del arte)
+        new Theme("Vazi", 0xFF00CC, 0x7A1466, 0x00C8FF, 0x3A2B8F, 0x0A0810, 0x3A2050, 0xE0B8FF)
+            .conChapa(0x0A0C12, 0x161A24, 0x343B4C, 0x04050A, 0xE4E8F2, 0x5A6272)
+            .conLogo(0xFFD700, 0xFF00FF, 0x00C8FF, 0x8A2BE2),
+        new Theme("Clásico", 0x00E43C, 0x0A8C30, 0xE8D878, 0x3A5D8F, 0x0B0F0B, 0x4A5A44, 0xC9F5CF),
+        new Theme("Llama",   0xFF7A00, 0x8C4A0A, 0xFFD23F, 0x7A4A20, 0x140D08, 0x5A3A20, 0xFFD8A8),
+        new Theme("Ámbar",   0xFFB000, 0x8C6200, 0xFFE6A8, 0x6E5A1F, 0x0F0D08, 0x5A4A20, 0xFFE6A8),
+        new Theme("Hielo",   0x55CCFF, 0x1A6E9C, 0xE8F6FF, 0x2A5A8F, 0x0A0F14, 0x2A4A5A, 0xB8E6FF)
+    );
+
+    static Theme findTheme(String n) { for (Theme t : TEMAS) if (t.nombre.equals(n)) return t; return null; }
+
+    static void applyTheme(Theme t) {
+        GREEN = new Color(t.lcd); GREEND = new Color(t.lcdDim);
+        AMBER = new Color(t.marquee); SEL = new Color(t.sel); ZEBRA = new Color(t.zebra);
+        TOGGON = new Color(t.toggOn); TOGGTX = new Color(t.toggTx);
+        CHROME = new Color(t.chrome); PANEL = new Color(t.panel);
+        LIGHT = new Color(t.light); DARK = new Color(t.dark);
+        GLYPH = new Color(t.glyph); GREY = new Color(t.grey);
+        LOGOV1 = new Color(t.logoV1); LOGOV2 = new Color(t.logoV2);
+        LOGOM1 = new Color(t.logoM1); LOGOM2 = new Color(t.logoM2);
+        temaActual = t.nombre;
+    }
+
+    // el tema queda en ~/.config/vazimusic/tema; un archivo de texto, sin más
+    static final java.nio.file.Path CONF = Paths.get(System.getProperty("user.home"), ".config", "vazimusic", "tema");
+    static void saveTheme(String n) {
+        try { Files.createDirectories(CONF.getParent()); Files.writeString(CONF, n); } catch (IOException ignored) { }
+    }
+    static Theme loadTheme() {
+        try { return findTheme(Files.readString(CONF).trim()); } catch (Exception e) { return null; }
+    }
 
     static final Pattern AUDIO_RE = Pattern.compile(".+\\.(mp3|ogg|oga|wav|flac|m4a|aac|opus|webm|mp4|wma|aiff?|au)$", Pattern.CASE_INSENSITIVE);
     static final int RATE = 44100;
@@ -43,6 +102,9 @@ class VaziMusic {
 
     public static void main(String[] args) {
         if (args.length > 0 && args[0].equals("--selftest")) { selftest(); return; }
+        Theme t0 = loadTheme();
+        if (t0 == null) t0 = TEMAS.get(0); // sin config guardada: la identidad del logo
+        applyTheme(t0);
         try {
             SwingUtilities.invokeLater(() -> new UI().build());
         } catch (HeadlessException e) {
@@ -94,6 +156,14 @@ class VaziMusic {
         assert volDb(10, -80f, 6f) < volDb(50, -80f, 6f) && volDb(50, -80f, 6f) < volDb(99, -80f, 6f);
         assert AUDIO_RE.matcher("tema.MP3").matches() && AUDIO_RE.matcher("x.opus").matches();
         assert !AUDIO_RE.matcher("nota.txt").matches() && !AUDIO_RE.matcher("mp3").matches();
+        assert TEMAS.size() >= 3 && findTheme("Clásico") != null && findTheme("inexistente") == null;
+        assert findTheme("Vazi") == TEMAS.get(0);
+        Color cromoVazi = new Color(findTheme("Vazi").chrome);
+        applyTheme(findTheme("Llama"));
+        assert !CHROME.equals(cromoVazi) && temaActual.equals("Llama");
+        applyTheme(findTheme("Clásico"));
+        assert GREEN.equals(new Color(0x00E43C));
+        applyTheme(TEMAS.get(0));
         System.out.println("selftest OK");
     }
 
@@ -241,7 +311,7 @@ class VaziMusic {
         void build() {
             frame.setUndecorated(true);
             frame.setResizable(false);
-            frame.setIconImage(makeIcon());
+            frame.setIconImages(makeIcons());
             frame.getContentPane().setBackground(CHROME);
             frame.addWindowListener(new WindowAdapter() {
                 public void windowClosing(WindowEvent e) { exitApp(); }
@@ -314,6 +384,64 @@ class VaziMusic {
 
         void exitApp() { eng.stopInternal(); System.exit(0); }
 
+        // ---- configuración de tema (botón CFG de la barra de título)
+
+        void abrirConfig() {
+            JDialog d = new JDialog(frame, "VaziMusic · Tema");
+            d.setUndecorated(true);
+            JPanel p = new JPanel(new BorderLayout());
+            p.setBackground(CHROME);
+            p.setBorder(BorderFactory.createMatteBorder(1, 1, 1, 1, LIGHT));
+
+            JPanel tit = new JPanel(new BorderLayout());
+            tit.setBackground(CHROME);
+            tit.setBorder(BorderFactory.createMatteBorder(0, 0, 1, 0, DARK));
+            JLabel l = new JLabel(" TEMA");
+            l.setFont(UI10); l.setForeground(GREY);
+            WButton x = new WButton(WButton.G.CLOSE, null, 20, 16, d::dispose);
+            tit.add(l, BorderLayout.WEST); tit.add(x, BorderLayout.EAST);
+            p.add(tit, BorderLayout.NORTH);
+
+            JPanel fila = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 6));
+            fila.setBackground(CHROME);
+            List<WButton> bots = new ArrayList<>();
+            for (Theme t : TEMAS) {
+                WButton b = new WButton(null, t.nombre.toUpperCase(Locale.ROOT), 64, 22, null);
+                b.action2 = () -> {
+                    aplicarTema(t);
+                    for (WButton o : bots) { o.on = false; o.repaint(); }
+                    b.on = true;
+                };
+                b.on = t.nombre.equals(temaActual);
+                bots.add(b);
+                fila.add(b);
+            }
+            p.add(fila, BorderLayout.CENTER);
+            d.setContentPane(p);
+            d.pack();
+            d.setLocationRelativeTo(frame);
+            d.setVisible(true);
+        }
+
+        void aplicarTema(Theme t) {
+            Color viejo = CHROME, viejoGris = GREY;
+            applyTheme(t);
+            saveTheme(t.nombre);
+            recolorear(frame, viejo, viejoGris);
+            pl.setSelectionBackground(SEL);
+            pl.setSelectionForeground(Color.WHITE);
+            frame.repaint();
+        }
+
+        // los paneles y labels genéricos guardan colores como propiedad,
+        // así que hay que darles la vuelta a mano cuando cambia el tema
+        void recolorear(Component c, Color viejo, Color viejoGris) {
+            if (c.getBackground() != null && c.getBackground().equals(viejo)) c.setBackground(CHROME);
+            if (c instanceof JLabel l && l.getForeground().equals(viejoGris)) l.setForeground(GREY);
+            if (c instanceof Container co) for (Component k : co.getComponents()) recolorear(k, viejo, viejoGris);
+            c.repaint();
+        }
+
         void tick() {
             if (!seek.dragging && current >= 0) {
                 Double d = curDur();
@@ -338,9 +466,14 @@ class VaziMusic {
                     Graphics2D g = (Graphics2D) g0;
                     g.setFont(LOGO);
                     int x = 10;
-                    g.setColor(new Color(0xF2F2E9)); g.drawString("VAZI", x, 18);
-                    x += g.getFontMetrics().stringWidth("VAZI") + 2;
-                    g.setColor(GREEN); g.drawString("MUSIC", x, 18);
+                    int wv = g.getFontMetrics().stringWidth("VAZI");
+                    g.setPaint(new GradientPaint(x, 0, LOGOV1, x + wv, 0, LOGOV2));
+                    g.drawString("VAZI", x, 18);
+                    x += wv + 2;
+                    int wm = g.getFontMetrics().stringWidth("MUSIC");
+                    g.setPaint(new GradientPaint(x, 0, LOGOM1, x + wm, 0, LOGOM2));
+                    g.drawString("MUSIC", x, 18);
+                    g.setPaint(null);
                 }
             };
             tb.setPreferredSize(new Dimension(448, 26));
@@ -348,8 +481,9 @@ class VaziMusic {
             tb.setBorder(BorderFactory.createMatteBorder(0, 0, 1, 0, DARK));
             WButton min = new WButton(WButton.G.MIN, null, 20, 16, () -> frame.setExtendedState(Frame.ICONIFIED));
             WButton close = new WButton(WButton.G.CLOSE, null, 20, 16, this::exitApp);
-            min.setBounds(398, 4, 20, 16); close.setBounds(422, 4, 20, 16);
-            tb.add(min); tb.add(close);
+            WButton cfg = new WButton(null, "CFG", 28, 16, this::abrirConfig);
+            cfg.setBounds(366, 4, 28, 16); min.setBounds(398, 4, 20, 16); close.setBounds(422, 4, 20, 16);
+            tb.add(cfg); tb.add(min); tb.add(close);
             MouseAdapter drag = new MouseAdapter() {
                 Point origen;
                 public void mousePressed(MouseEvent e) { origen = e.getLocationOnScreen(); }
@@ -533,6 +667,22 @@ class VaziMusic {
                     BorderFactory.createMatteBorder(0, 0, 1, 1, LIGHT));
         }
 
+        static List<Image> makeIcons() {
+            // icono del logo si el PNG vive junto al .java (el lanzador pasa -Dvazi.dir);
+            // si no está, el triangulito dibujado de siempre
+            String dir = System.getProperty("vazi.dir");
+            if (dir != null) {
+                try {
+                    Image big = ImageIO.read(new File(dir, "VaziMusic.png"));
+                    List<Image> out = new ArrayList<>();
+                    for (int s : new int[]{512, 256, 128, 64, 32, 16})
+                        out.add(big.getScaledInstance(s, s, Image.SCALE_SMOOTH));
+                    return out;
+                } catch (Exception ignored) { }
+            }
+            return List.of(makeIcon());
+        }
+
         static Image makeIcon() {
             Image im = new java.awt.image.BufferedImage(16, 16, java.awt.image.BufferedImage.TYPE_INT_ARGB);
             Graphics2D g = (Graphics2D) im.getGraphics();
@@ -683,6 +833,7 @@ class VaziMusic {
         final G glyph; final String text; final int bw, bh;
         boolean on, pressed;
         final Runnable action;
+        Runnable action2; // variante asignable después de crear (menus que se autoconocen)
 
         WButton(G glyph, String text, int w, int h, Runnable action) {
             this.glyph = glyph; this.text = text; this.bw = w; this.bh = h; this.action = action;
@@ -692,7 +843,10 @@ class VaziMusic {
                 public void mousePressed(MouseEvent e)  { pressed = true;  repaint(); }
                 public void mouseReleased(MouseEvent e) {
                     pressed = false; repaint();
-                    if (contains(e.getPoint()) && action != null) action.run();
+                    if (contains(e.getPoint())) {
+                        if (action != null) action.run();
+                        else if (action2 != null) action2.run();
+                    }
                 }
                 public void mouseExited(MouseEvent e)   { pressed = false; repaint(); }
             });
