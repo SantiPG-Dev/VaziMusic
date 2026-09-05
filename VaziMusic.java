@@ -10,6 +10,7 @@ import javax.sound.sampled.AudioSystem;
 import javax.sound.sampled.FloatControl;
 import javax.sound.sampled.LineUnavailableException;
 import javax.sound.sampled.SourceDataLine;
+import javax.imageio.ImageIO;
 import javax.swing.*;
 import javax.swing.border.Border;
 import java.awt.*;
@@ -310,7 +311,7 @@ class VaziMusic {
         void build() {
             frame.setUndecorated(true);
             frame.setResizable(false);
-            frame.setIconImage(makeIcon());
+            frame.setIconImages(makeIcons());
             frame.getContentPane().setBackground(CHROME);
             frame.addWindowListener(new WindowAdapter() {
                 public void windowClosing(WindowEvent e) { exitApp(); }
@@ -664,6 +665,22 @@ class VaziMusic {
             return BorderFactory.createCompoundBorder(
                     BorderFactory.createMatteBorder(1, 1, 0, 0, DARK),
                     BorderFactory.createMatteBorder(0, 0, 1, 1, LIGHT));
+        }
+
+        static List<Image> makeIcons() {
+            // icono del logo si el PNG vive junto al .java (el lanzador pasa -Dvazi.dir);
+            // si no está, el triangulito dibujado de siempre
+            String dir = System.getProperty("vazi.dir");
+            if (dir != null) {
+                try {
+                    Image big = ImageIO.read(new File(dir, "VaziMusic.png"));
+                    List<Image> out = new ArrayList<>();
+                    for (int s : new int[]{512, 256, 128, 64, 32, 16})
+                        out.add(big.getScaledInstance(s, s, Image.SCALE_SMOOTH));
+                    return out;
+                } catch (Exception ignored) { }
+            }
+            return List.of(makeIcon());
         }
 
         static Image makeIcon() {
