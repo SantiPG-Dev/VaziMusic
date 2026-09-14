@@ -205,6 +205,7 @@ class VaziMusic {
             } catch (LineUnavailableException e) { ui.status("sin línea de audio: " + e.getMessage()); return; }
             line = l;
             applyVolume(volPct);
+            l.start();
             running = true; paused = false;
             final Process p = ff;
             Thread pump = new Thread(() -> {
@@ -904,7 +905,11 @@ class VaziMusic {
         public Component getListCellRendererComponent(JList<? extends Track> list, Track t, int i, boolean sel, boolean foc) {
             removeAll();
             setBackground(sel ? SEL : (i % 2 == 1 ? ZEBRA : BLACK));
-            Dimension d = list.getCellBounds(i, i).getSize();
+            // nunca llamar a list.getCellBounds() aquí: el UI lo usa para medir
+            // las celdas y nos volvería a llamar (recursión infinita). Alto fijo
+            // de la lista y ancho actual (300 de reserva antes del primer layout).
+            int ch = list.getFixedCellHeight();
+            Dimension d = new Dimension(Math.max(list.getWidth(), 300), ch > 0 ? ch : 18);
             setSize(d.width, d.height);
             JLabel num = label(sel, GREEN, GREEND, LCD10);
             JLabel nam = label(sel, Color.WHITE, GREEN, LCD12);
