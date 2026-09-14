@@ -326,6 +326,17 @@ class VaziMusic {
             display.setBorder(sunken());
             center.add(display);
 
+            // barra de progreso: al soltar el tirador, salto a ese punto de la pista
+            seek = new MiniSlider(0, 1000, 0, null, v -> {
+                Double d = curDur();
+                if (current >= 0 && d != null && d > 0) eng.play(cur().file, v / 1000.0 * d);
+            });
+            JPanel seekRow = new JPanel(new BorderLayout(4, 0));
+            seekRow.setBackground(CHROME);
+            seekRow.setBorder(BorderFactory.createEmptyBorder(6, 6, 0, 6));
+            seekRow.add(seek, BorderLayout.CENTER);
+            center.add(seekRow);
+
             JPanel volRow = new JPanel(new BorderLayout(4, 0));
             volRow.setBackground(CHROME);
             volRow.setBorder(BorderFactory.createEmptyBorder(4, 6, 2, 6));
