@@ -85,6 +85,8 @@ class VaziMusic {
 
     // el tema queda en ~/.config/vazimusic/tema; un archivo de texto, sin más
     static final java.nio.file.Path CONF = Paths.get(System.getProperty("user.home"), ".config", "vazimusic", "tema");
+    static final java.nio.file.Path CONFDIR = CONF.getParent();
+    static final java.nio.file.Path COLA = CONFDIR.resolve("cola");
     static void saveTheme(String n) {
         try { Files.createDirectories(CONF.getParent()); Files.writeString(CONF, n); } catch (IOException ignored) { }
     }
@@ -102,15 +104,80 @@ class VaziMusic {
 
     public static void main(String[] args) {
         if (args.length > 0 && args[0].equals("--selftest")) { selftest(); return; }
+        // una sola ventana por equipo: si ya vive otra, le dejamos los archivos
+        // en la cola y nos salimos sin abrir nada
+        if (!claimSingleton()) { forwardToRunning(args); return; }
         Theme t0 = loadTheme();
         if (t0 == null) t0 = TEMAS.get(0); // sin config guardada: la identidad del logo
         applyTheme(t0);
         try {
-            SwingUtilities.invokeLater(() -> new UI().build());
+            SwingUtilities.invokeLater(() -> new UI(args).build());
         } catch (HeadlessException e) {
             System.err.println("Falta el Java con soporte gráfico. En Fedora: sudo dnf install java-25-openjdk");
             System.exit(1);
         }
+    }
+
+    // ---------------- instancia única ----------------
+
+    // candado sobre un archivo: el SO lo libera solo cuando el proceso muere,
+    // así no hay que limpiar nada a mano ni hay carreras de PID
+    static java.nio.channels.FileLock candado;
+
+    static boolean claimSingleton() {
+        try {
+            Files.createDirectories(CONFDIR);
+            java.nio.channels.FileChannel ch = java.nio.channels.FileChannel.open(
+                    CONFDIR.resolve("instancia.lock"),
+                    java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.WRITE);
+            candado = ch.tryLock();
+            return candado != null;
+        } catch (IOException e) { return false; }
+    }
+
+    // los archivos van en un .txt de la cola (tmp + rename para que el lector
+    // nunca pille un archivo a medias); la instancia viva los recoge y los
+    // mete en la lista de espera
+    static void forwardToRunning(String[] args) {
+        if (args.length == 0) return; // sin archivos solo querían otra ventana: no existe
+        StringBuilder b = new StringBuilder();
+        for (String a : args) b.append(new File(a).getAbsolutePath()).append('\n');
+        try {
+            Files.createDirectories(COLA);
+            var tmp = Files.createTempFile(COLA, "encolando-", ".part");
+            Files.writeString(tmp, b.toString());
+            Files.move(tmp, tmp.resolveSibling(tmp.getFileName() + ".txt"));
+        } catch (IOException e) {
+            System.err.println("no pude pasarle los archivos a la instancia activa: " + e.getMessage());
+        }
+    }
+
+    static List<File> parseQueue(String s) {
+        List<File> out = new ArrayList<>();
+        for (String line : s.split("\n")) if (!line.isBlank()) out.add(new File(line));
+        return out;
+    }
+
+    // la instancia viva mira la cola cada medio segundo; también recoge lo que
+    // haya quedado de una sesión que murió antes de leerlo
+    static void watchQueue(UI ui) {
+        Thread t = new Thread(() -> {
+            while (true) {
+                try {
+                    File[] pend = COLA.toFile().listFiles((d, n) -> n.endsWith(".txt"));
+                    if (pend != null && pend.length > 0) {
+                        Arrays.sort(pend, Comparator.comparingLong(File::lastModified));
+                        List<File> fs = new ArrayList<>();
+                        for (File f : pend) fs.addAll(parseQueue(Files.readString(f.toPath())));
+                        for (File f : pend) f.delete();
+                        if (!fs.isEmpty()) SwingUtilities.invokeLater(() -> ui.addFiles(fs));
+                    }
+                    Thread.sleep(500);
+                } catch (Exception ignored) { }
+            }
+        }, "cola");
+        t.setDaemon(true);
+        t.start();
     }
 
     // ---------------- helpers puros (probados en selftest) ----------------
@@ -155,6 +222,7 @@ class VaziMusic {
         assert volDb(0, -80f, 6f) == -80f;
         assert volDb(10, -80f, 6f) < volDb(50, -80f, 6f) && volDb(50, -80f, 6f) < volDb(99, -80f, 6f);
         assert AUDIO_RE.matcher("tema.MP3").matches() && AUDIO_RE.matcher("x.opus").matches();
+        assert parseQueue("a.mp3\n\nb/c.ogg\n").equals(List.of(new File("a.mp3"), new File("b/c.ogg")));
         assert !AUDIO_RE.matcher("nota.txt").matches() && !AUDIO_RE.matcher("mp3").matches();
         assert TEMAS.size() >= 3 && findTheme("Clásico") != null && findTheme("inexistente") == null;
         assert findTheme("Vazi") == TEMAS.get(0);
@@ -297,6 +365,7 @@ class VaziMusic {
     // ---------------- interfaz ----------------
 
     static class UI {
+        final String[] bootArgs;
         final Engine eng = new Engine(this);
         final DefaultListModel<Track> model = new DefaultListModel<>();
         final JFrame frame = new JFrame("VaziMusic");
@@ -305,6 +374,8 @@ class VaziMusic {
         MiniSlider seek, vol;
         WButton shufB, repB;
         JLabel info = new JLabel("0 temas");
+
+        UI(String[] args) { this.bootArgs = args; }
 
         int current = -1, selected = -1;
         boolean shuffle, repeat, showRemaining, everPlayed;
@@ -392,6 +463,9 @@ class VaziMusic {
             frame.setSize(448, 420);
             frame.setLocationRelativeTo(null);
             frame.setVisible(true);
+            // con qué nos abrieron, y a partir de aquí lo que caiga en la cola
+            if (bootArgs.length > 0) addFiles(Arrays.stream(bootArgs).map(File::new).toList());
+            watchQueue(this);
         }
 
         void exitApp() { eng.stopInternal(); System.exit(0); }
@@ -585,7 +659,7 @@ class VaziMusic {
                 if (f.isDirectory()) {
                     File[] kids = f.listFiles();
                     if (kids != null) collect(Arrays.asList(kids), out);
-                } else if (AUDIO_RE.matcher(f.getName()).matches()) {
+                } else if (AUDIO_RE.matcher(f.getName()).matches() && f.isFile()) {
                     out.add(f);
                 }
             }
